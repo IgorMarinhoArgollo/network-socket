@@ -6,12 +6,14 @@ import base64
 # Convertendo a chave hexadecimal para bytes
 SECRET_KEY = bytes.fromhex("457462fc5014cc11c6ede3e3bae5adee4a46908a36050b995d0850d4f27241a6")
 
+#Criptografa uma mensagem.
 def encrypt_message(message: str) -> str:
-    """Criptografa uma mensagem."""
-    if len(SECRET_KEY) not in [16, 24, 32]:  # Verifica se a chave tem tamanho válido
+    # Verifica se a chave tem tamanho válido
+    if len(SECRET_KEY) not in [16, 24, 32]:  
         raise ValueError("Tamanho da chave inválido para AES. Deve ser 16, 24 ou 32 bytes.")
     
-    iv = os.urandom(16)  # Gera um vetor de inicialização (IV) único para cada mensagem
+    # Gera um vetor de inicialização (IV) único para cada mensagem
+    iv = os.urandom(16)  
     cipher = Cipher(algorithms.AES(SECRET_KEY), modes.CBC(iv))
     encryptor = cipher.encryptor()
 
@@ -25,8 +27,8 @@ def encrypt_message(message: str) -> str:
     # Retorna o IV + mensagem criptografada como uma string codificada em base64
     return base64.b64encode(iv + encrypted_message).decode('utf-8')
 
+#Descriptografa uma mensagem criptografada.
 def decrypt_message(encrypted_message: str) -> str:
-    """Descriptografa uma mensagem criptografada."""
     encrypted_data = base64.b64decode(encrypted_message)
 
     # Extrai o IV e os dados criptografados

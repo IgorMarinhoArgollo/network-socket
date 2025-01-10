@@ -15,3 +15,13 @@ instale o crypthography: pip install crypthography
 
 para rodar o server: python server.py
 para rodar as instâncias do client: client:py
+
+- fluxo client
+  while true:
+    cadastro
+    login
+    sair
+  while true:
+    mensagem
+    broadcast
+    envio arquivo
