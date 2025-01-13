@@ -1,5 +1,6 @@
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
+from werkzeug.security import check_password_hash
 import os
 import base64
 
@@ -44,3 +45,21 @@ def decrypt_message(encrypted_message: str) -> str:
     message = unpadder.update(padded_message) + unpadder.finalize()
 
     return message.decode('utf-8')
+
+
+def verifyPassword(username, password, usuariosCadastrados):
+    return check_password_hash(usuariosCadastrados.get(username, ''), password)
+
+
+def sendFile(client, user):
+    receiver = input("Digite o nome de usuário de destino do arquivo:\n").strip()
+    path = input("Digite o caminho do arquivo:\n").strip()
+    try:
+        with open(path, 'rb') as f:
+            conteudo = f.read()
+        conteudo_codificado = base64.b64encode(conteudo).decode('utf-8')
+        encrypted_message = encrypt_message(f'arquivo-{user}:{receiver}-{conteudo_codificado}')
+        client.send(encrypted_message.encode('utf-8'))
+        print("Arquivo enviado com sucesso.")
+    except Exception as e:
+        print(f"Erro ao enviar arquivo {e}")

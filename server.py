@@ -1,6 +1,8 @@
 import socket
 import threading
-from crypto import encrypt_message, decrypt_message
+from crypto import encrypt_message, decrypt_message, verifyPassword
+from werkzeug.security import generate_password_hash, check_password_hash
+
 
 HOST = '127.0.0.1'
 PORT = 12345
@@ -11,16 +13,16 @@ clientesConectados = {}  # Dicionário para mapear usuários autenticados às co
 
 # Faz o gerenciamento de login
 def gerenciadorDeLogin(conn, solicitacao):
-  _, user_pass = solicitacao.split('-', 1) # Separa a solicitação no tipo de login + usuárioEpassword
-  username, password = user_pass.split(':', 1) # Separa usuárioEpassword em usuário e password
-  if username in usuariosCadastrados and usuariosCadastrados[username] == password: # Verifica se o usuário está cadastrado
-    print(f"Usuário conectado: {username}")
-    conn.send("true".encode('utf-8')) # Envia para o cliente a confirmação de login 
-    return username  # Retorna o nome do usuário autenticado
+  _, user_pass = solicitacao.split('-', 1) 
+  username, password = user_pass.split(':', 1) 
+  if verifyPassword(username, password, usuariosCadastrados): 
+      print(f"Usuário conectado: {username}")
+      conn.send("true".encode('utf-8')) 
+      return username  
   else:
-    print(f"Falha no login para o usuário: {username}")
-    conn.send("false".encode('utf-8'))
-    return None
+      print(f"Falha no login para o usuário: {username}")
+      conn.send("false".encode('utf-8'))
+      return None
 
 # Faz o gerenciamento de cadastro
 def gerenciadorDeCadastro(conn, solicitacao):
@@ -145,9 +147,9 @@ def gerenciadorDeCliente(conn, addr):
 def main():
     global usuariosCadastrados
     usuariosCadastrados = {
-        'user1': 'pass1',
-        'user2': 'pass2',
-        'user3': 'pass3'
+        'user1': generate_password_hash('pass1'),
+        'user2': generate_password_hash('pass2'),
+        'user3': generate_password_hash('pass3')
     }
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
