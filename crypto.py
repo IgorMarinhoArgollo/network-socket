@@ -13,7 +13,7 @@ def encrypt_message(message: str) -> str:
     if len(SECRET_KEY) not in [16, 24, 32]:  
         raise ValueError("Tamanho da chave inválido para AES. Deve ser 16, 24 ou 32 bytes.")
     
-    # Gera um vetor de inicialização (IV) único para cada mensagem
+    # Gera um vetor de inicialização (IV) único para cada mensagem - usado para o (Cipher Block Chaining)
     iv = os.urandom(16)  
     cipher = Cipher(algorithms.AES(SECRET_KEY), modes.CBC(iv))
     encryptor = cipher.encryptor()

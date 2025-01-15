@@ -183,7 +183,8 @@ def main():
         'user3': generate_password_hash('pass3')
     }
 
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # AF_INET = IPV4 e SOCK_STREAM = TCP se fosse SOCK_DGRAM seria UDP
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
     server.bind((HOST, PORT))
     server.listen(NUMERO_DE_CONEXOES)
 
@@ -199,6 +200,7 @@ def main():
               )  # Aguarda até conexão ser estabelecida
               clients.append(conn)  # Adiciona o client na lista controlada
 
+              # Cada thread solicitação ao gerenciadorDeAutenticação é feito em uma thread.
               threading.Thread(
                   target=gerenciadorDeAutenticacao, args=(conn,)
               ).start()
