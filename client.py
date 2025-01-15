@@ -1,9 +1,20 @@
 import socket
+import getpass
+import logging
 import threading
 from crypto import encrypt_message, decrypt_message
 
+# Recebe o user atual
+username = getpass.getuser()
+
+# Configurações de logging
+logging.basicConfig(
+    level=logging.INFO,
+    format=f"%(asctime)s [%(levelname)s] [{username}]: %(message)s",
+)
+
 HOST = '127.0.0.1'
-PORT = 12345
+PORT = 1234
 
 def receberMensagem(cliente):
     while True:
@@ -21,46 +32,48 @@ def receberMensagem(cliente):
         cliente.close()
         break
 
-def login(cliente):
-  global usuario  # Declara a variável como global
-  global connected  # Declara a variável como global
-  while connected == 'false':
-    usuario = input("Digite seu usuário:\n").strip() # Captura o usuário
-    password = input("Digite sua senha:\n").strip() # Captura a senha
-    if usuario != '' and password != '':
-      print("Solicitando conexão ao servidor\n")
-      cliente.send(f"login-{usuario}:{password}".encode('utf-8')) # Envia os dados de login para o servidor
-      result = cliente.recv(1024).decode('utf-8').strip().lower() # Recebe resposta do servidor
-      connected = result == 'true' # Encerra loop de login ou cadastro
-      if connected:
-        print('Usuário conectado')
-      return connected
-    else:
-      print('Não foi possível realizar a conexão - verifique o usuário e senha')
-      break
-
 def cadastro(cliente):
-    global usuario  # Declara a variável como global
-    global connected  # Declara a variável como global
-    while connected == 'false':
-      usuario = input("Digite seu usuário: ").strip() # Captura o usuário
-      password = input("Digite sua senha: ").strip() # Captura a senha
-      if usuario != '' and password != '':
-        print("Solicitando conexão ao servidor\n")
-        cliente.send(f"cadastro-{usuario}:{password}".encode('utf-8')) # Envia os dados de Cadastro para o servidor
-        result = cliente.recv(1024).decode('utf-8').strip().lower() # Recebe resposta do servidor
-        connected = result == 'true' # Encerra loop de login ou cadastro
-        return connected
+  usuario = input("Digite seu usuário: ").strip()  # Captura o usuário
+  senha = input("Digite sua senha: ").strip()  # Captura a senha
+  # encrypted_data = encrypt_message(f"cadastrar-{username}-{password}")
+
+  if usuario and senha:
+      # Envia os dados de Cadastro para o servidor
+      cliente.send(f"cadastro-{usuario}-{senha}".encode("utf-8"))
+      # Recebe resposta do servidor
+      result = cliente.recv(1024).decode("utf-8").strip().lower()
+      if result == "true":
+          logging.info(f"Cadastro do usuário '{usuario}' efetuado.")
       else:
-        print('Não foi possível realizar a conexão - verifique o usuário e senha')
-        break
+          logging.error("Erro ao efetuar cadastro.")
+  else:
+      logging.error(
+          "Não foi possível realizar a conexão - verifique o usuário e senha."
+      )
+
+def login(cliente):
+  usuario = input("Digite seu usuário: ").strip()  # Captura o usuário
+  password = input("Digite sua senha: ").strip()  # Captura a senha
+
+  if usuario and password:
+      logging.info("Solicitando login ao servidor.")
+      cliente.send(f"login-{usuario}-{password}".encode("utf-8"))
+      result = cliente.recv(1024).decode("utf-8").strip().lower()
+      connected = True if result == "true" else False
+      if connected:
+          logging.info("Login efetuado!")
+      return connected
+  else:
+      logging.error(
+          "Não foi possível realizar a conexão - verifique o usuário e senha"
+      )
 
 def enviarMensagemPrivada(cliente):
   destinatario = input("Digite o destinatario da mensagem:\n").strip() # Captura o destinatário
   print('Digite sua mensagem:')
   message = input(f"{usuario}: ") # Captura a mensagem
   if not message:  # Verifica se a mensagem não está vazia
-    print("Mensagem não pode ser vazia.")
+    logging.error("Mensagem não pode ser vazia.")
     return
   encrypted_message = encrypt_message(f'privada-{usuario}:{destinatario}-{message}') # Criptografa a mensagem antes de enviar
   cliente.send(encrypted_message.encode('utf-8')) # Envia a mensagem para o servidor
@@ -69,7 +82,7 @@ def enviarMensagemMulticast(cliente):
   print('Digite sua mensagem:\n')
   message = input(f"{usuario}: ") # Captura a mensagem
   if not message:  # Verifica se a mensagem não está vazia
-    print("Mensagem não pode ser vazia.")
+    logging.error("Mensagem não pode ser vazia.")
     return
   encrypted_message = encrypt_message(f'multicast-{usuario}:{message}') # Criptografa a mensagem antes de enviar
   cliente.send(encrypted_message.encode('utf-8'))  # Envia a mensagem para o servidor
