@@ -1,3 +1,5 @@
+import os
+import tqdm
 import socket
 import getpass
 import logging
@@ -5,147 +7,190 @@ import threading
 from crypto import encrypt_message, decrypt_message
 
 # Recebe o user atual
-username = getpass.getuser()
+log_user = getpass.getuser()
 
 # Configurações de logging
 logging.basicConfig(
     level=logging.INFO,
-    format=f"%(asctime)s [%(levelname)s] [{username}]: %(message)s",
+    format=f"%(asctime)s [%(levelname)s] [{log_user}]: %(message)s",
 )
 
 HOST = '127.0.0.1'
 PORT = 1234
 
-def receberMensagem(cliente):
+def autenticar(client: socket) -> str:
     while True:
       try:
-        encrypted_message = cliente.recv(1024).decode('utf-8') # Recebe mensagem criptografada
-        if not encrypted_message: # Verifica se a mensagem está realmente criptografada
-          break
+        welcome_message = client.recv(1024).decode('utf-8')
+        option = input(welcome_message).lower()
 
-        # Decriptografa a mensagem recebida
-        message = decrypt_message(encrypted_message)
-        print(f"{message}")
-          
-      except Exception as e:
-        print(f"Erro ao receber mensagem: {e}")
-        cliente.close()
+        if option != "login" and option != "cadastro":
+            logging.warning("Opção inválida. Tente novamente.")
+            continue
+        
+        user = input("Digite seu usuário: ").strip()
+        password = input("Digite sua senha: ").strip()
+
+        message = f"{option}-{user}-{password}"
+        client.send(message.encode('utf-8')) # TODO: Criptografar
+
+        response = client.recv(1024).decode('utf-8') # Possiveis respostas: USERTAKEN e SUCCESS
+
+        # --- Respostas para CADASTRO ---
+        if response == "USERTAKEN":
+            logging.error("Usuário já existe! Tente novamente") 
+            continue
+
+        elif response == "SUCCESSCAD":
+            logging.info("Usuário cadastrado com sucesso!")
+            continue
+        
+        # --- Respostas para LOGIN ---
+        elif response == "INVALIDCREDENTIALS":
+            logging.error("Credenciais inválidas! Tente novamente")
+            continue
+
+        elif response == "SUCCESSLOG":
+            logging.info("Usuário autenticado com sucesso!")
+            return user
+
+        # --- DEFAULT ---
+        else:
+            raise Exception("Resposta inesperada do servidor durante autenticação.")
+      
+      except KeyboardInterrupt:
+        client.close()
         break
 
-def cadastro(cliente):
-  usuario = input("Digite seu usuário: ").strip()  # Captura o usuário
-  senha = input("Digite sua senha: ").strip()  # Captura a senha
-  # encrypted_data = encrypt_message(f"cadastrar-{username}-{password}")
+def receberMensagens(client: socket):
+  while True:
+    try:
+        message = client.recv(1024).decode('utf-8') # TODO: Decriptografar
+        print("\n", message, "\n")
 
-  if usuario and senha:
-      # Envia os dados de Cadastro para o servidor
-      cliente.send(f"cadastro-{usuario}-{senha}".encode("utf-8"))
-      # Recebe resposta do servidor
-      result = cliente.recv(1024).decode("utf-8").strip().lower()
-      if result == "true":
-          logging.info(f"Cadastro do usuário '{usuario}' efetuado.")
-      else:
-          logging.error("Erro ao efetuar cadastro.")
-  else:
-      logging.error(
-          "Não foi possível realizar a conexão - verifique o usuário e senha."
-      )
+    except Exception as e:
+        logging.error(f"Erro ao receber mensagem: {e}")
+        client.close()
+        break
 
-def login(cliente):
-  usuario = input("Digite seu usuário: ").strip()  # Captura o usuário
-  password = input("Digite sua senha: ").strip()  # Captura a senha
+def receberArquivos(client: socket):
+  while True:
+    try:
+        message = client.recv(1024).decode('utf-8') # TODO: Decriptografar
+        print("\n", message, "\n")
 
-  if usuario and password:
-      logging.info("Solicitando login ao servidor.")
-      cliente.send(f"login-{usuario}-{password}".encode("utf-8"))
-      result = cliente.recv(1024).decode("utf-8").strip().lower()
-      connected = True if result == "true" else False
-      if connected:
-          logging.info("Login efetuado!")
-      return connected
-  else:
-      logging.error(
-          "Não foi possível realizar a conexão - verifique o usuário e senha"
-      )
+    except Exception as e:
+        logging.error(f"Erro ao receber mensagem: {e}")
+        client.close()
+        break
 
-def enviarMensagemPrivada(cliente):
-  destinatario = input("Digite o destinatario da mensagem:\n").strip() # Captura o destinatário
-  print('Digite sua mensagem:')
-  message = input(f"{usuario}: ") # Captura a mensagem
-  if not message:  # Verifica se a mensagem não está vazia
-    logging.error("Mensagem não pode ser vazia.")
-    return
-  encrypted_message = encrypt_message(f'privada-{usuario}:{destinatario}-{message}') # Criptografa a mensagem antes de enviar
-  cliente.send(encrypted_message.encode('utf-8')) # Envia a mensagem para o servidor
+def enviarPrivada(client: socket, user: str):
+  recipient = input("Digite o destinatário da mensagem: ").strip() 
+  text = input("Digite a mensagem: ")
 
-def enviarMensagemMulticast(cliente):
-  print('Digite sua mensagem:\n')
-  message = input(f"{usuario}: ") # Captura a mensagem
-  if not message:  # Verifica se a mensagem não está vazia
-    logging.error("Mensagem não pode ser vazia.")
-    return
-  encrypted_message = encrypt_message(f'multicast-{usuario}:{message}') # Criptografa a mensagem antes de enviar
-  cliente.send(encrypted_message.encode('utf-8'))  # Envia a mensagem para o servidor
+  if not text:
+     logging.error("A mensagem não pode ser vazia")
+     return
+  
+  message = f'privada-{user}-{recipient}-{text}'
 
-def enviarArquivo(cliente):
-    destinatario = input("Digite o destinatario do arquivo:\n").strip()
-    print('Escolha o arquivo:\n')
-    # encrypted_message = encrypt_message(f'arquivo-{usuario}:{destinatario}-{file_data}')
-    # cliente.send(encrypted_message.encode('utf-8'))
+  client.send(message.encode('utf-8')) # TODO: Criptografar
+  response = client.recv(1024).decode('utf-8') # Possiveis respostas: INVALID e SUCCESS
 
-def main():
-    global connected  # Declara a variável como global
-    global usuario    # Declara a variável como global
-    connected = 'false'  # Inicializa a variável de controle
-    usuario = ''  # Inicializa a variável usuario
+  if response == "SUCCESS":
+     logging.info("Mensagem enviada com sucesso")
+  elif response == "INVALID":
+     logging.error("Destinatário não encontrado. Tente novamente")
 
-    # cria o socket
-    cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # Conecte-se ao servidor
-    cliente.connect((HOST, PORT))
-    
-    # loop para login ou cadastro
-    print("Caso deseje fazer o Login, digite 'login', caso deseje se cadastrar digite 'cadastro'\n")
-    while connected == 'false':
-      tipoDeLogin = input().strip() # Captura o tipo de autenticação
-      if tipoDeLogin == 'cadastro':
-        connected = cadastro(cliente)
-              
-      if tipoDeLogin == 'login':
-        connected = login(cliente)
+def enviarMulticast(client: socket, user: str):
+  text = input("Digite a mensagem: ")
 
-    # Conexão com o socket do server
-    if connected:
-      thread = threading.Thread(target=receberMensagem, args=(cliente,)) # Habilita o conexão com o servidor, caso conectado
-      thread.start()
+  if not text:
+     logging.error("A mensagem não pode ser vazia")
+     return
+  
+  message = f'multicast-{user}-{text}'
 
-      # Loop para escolha de tipo de mensagem, destinatário e input de mensagem
-      print("Digite o tipo de mensagem a ser enviada (privada, multicast, arquivo) ou 'sair' para encerrar:\n")
-      while True:
-        try:
-          tipoDeMensagem = input().strip()
-          
-          # Processamento de envio de mensagens privadas
-          if tipoDeMensagem == 'privada':
-            enviarMensagemPrivada(cliente)
-              
-          # Processamento de envio de mensagens multicast
-          if tipoDeMensagem == 'multicast':
-            enviarMensagemMulticast(cliente)
-          
-          # Processamento de envio arquivo para destinatário único
-          if tipoDeMensagem == 'arquivo':
-            enviarArquivo(cliente)
-          
-          # Encerramento de conexão
-          if tipoDeMensagem.lower() == 'sair':
-            cliente.close()
-            return
-              
-        except Exception as e:
-          print(f"Algo deu errado: {e}")
-          cliente.close()
-          break
+  client.send(message.encode('utf-8')) # TODO: Criptografar
+  response = client.recv(1024).decode('utf-8') # Possiveis respostas: FAIL e SUCCESS
+
+  if response == "SUCCESS":
+     logging.info("Mensagem enviada com sucesso")
+  elif response == "FAIL":
+     logging.error("Erro ao enviar mensagem. Tente novamente")
+
+def enviarArquivo(client: socket, user:str):
+  recipient = input("Digite o destinatário da mensagem: ").strip() 
+  filename = input("Digite o caminho do arquivo: ").strip()
+
+  if not os.path.exists(filename):
+     logging.error("O caminho para o arquivo não existe")
+     return
+
+  with open(filename, "rb") as file:
+      file_name = filename.split("/")[-1]  # Extrai o nome
+      file_size = len(file.read())  # Tamanho do arquivo
+      file.seek(0)  # Reseta o arquivo para o inicio
+
+      # Envia o nome do arquivo e tamanho primeiro
+      message = f'arquivo-{user}-{recipient}-{file_name}-{file_size}'
+
+      client.send(message.encode("utf-8"))
+      response = client.recv(1024).decode('utf-8')
+
+      if response != "READY":
+          logging.error("Server não está pronto para receber o arquivo")
+          return
+
+      # Send the file in chunks
+      logging.info(f"Enviando arquivo {file_name}...")
+      with tqdm.tqdm(total=file_size, unit='B', unit_scale=True, desc=f"Sending {file_name}") as pbar:
+        chunk = file.read(1024)  # Envia 1KB por batch
+        while chunk:
+            client.send(chunk)
+            pbar.update(len(chunk))  # Barra de progresso
+            chunk = file.read(1024)
+      server_ack = client.recv(1024).decode('utf-8')
+      logging.info(server_ack)  
+
+def start_client():
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.connect((HOST, PORT))
+
+    user = autenticar(client)
+
+    # Inicia thread para recebimento de mensagens 
+    threading.Thread(target=receberMensagens, args=(client,)).start() 
+
+    # Inicia thread para recebimento de arquivos
+    threading.Thread(target=receberArquivos, args=(client,)).start() 
+
+    # Loop para escolha de tipo de mensagem, destinatário e input de mensagem
+    while True:
+      try:
+        option = input("Digite o tipo de mensagem a ser enviada ('privada', 'multicast', 'arquivo') ou 'sair': ").strip()
+        
+        # Processamento de envio de mensagens privadas
+        if option.lower() == 'privada':
+          enviarPrivada(client, user)
+            
+        # Processamento de envio de mensagens multicast
+        if option.lower() == 'multicast':
+          enviarMulticast(client, user)
+        
+        # Processamento de envio arquivo para destinatário único
+        if option.lower() == 'arquivo':
+          enviarArquivo(client, user)
+        
+        # Encerramento de conexão
+        if option.lower() == 'sair':
+          client.close()
+          return
+            
+      except Exception as e:
+        logging.error(e)
+        client.close()
+        break
 
 if __name__ == "__main__":
-    main()
+    start_client()

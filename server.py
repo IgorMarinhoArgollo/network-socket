@@ -1,220 +1,171 @@
 import socket
+import tqdm
 import threading
-import getpass
+import pickle
 import logging
-from crypto import encrypt_message, decrypt_message, verifyPassword
-from werkzeug.security import generate_password_hash, check_password_hash
+import getpass
+from crypto import encrypt_message, decrypt_message
 
 # Recebe o user atual
-username = getpass.getuser()
+log_user = getpass.getuser()
 
 # Configurações de logging
 logging.basicConfig(
     level=logging.INFO,
-    format=f"%(asctime)s [%(levelname)s] [{username}]: %(message)s",
+    format=f"%(asctime)s [%(levelname)s] [{log_user}]: %(message)s",
 )
+
+credenciais = {} # Salva as credenciais dos usuários cadastrados
+clients = [] # Controla o número de conexões
+authenticated_clients = {} # Controla os clientes autenticados
 
 HOST = '127.0.0.1'
 PORT = 1234
 NUMERO_DE_CONEXOES = 5
 
-clients = []  # Lista para gerenciar conexões
-credenciais = {}  # Dicionário para mapear usuários autenticados às conexões
-
-# Faz o gerenciamento de login
-def gerenciadorDeLogin(conn, solicitacao):
-  username = solicitacao[1]
-  password = solicitacao[2]
-
-  # Verifica se já existe usuário cadastrado com esse username
-  if username in credenciais and credenciais[username] == password:
-    # Adiciona o usuário e senha na lista de usuários
-    logging.info(f"Usuário autenticado: {username}")
-    conn.send(
-        "true".encode("utf-8")
-    )  # Envia para o cliente a confirmação de login
-    return username  # Retorna o nome do usuário autenticado
-  else:
-      logging.error(f"Falha no login para o usuário: {username}.")
-      conn.send("false".encode("utf-8"))
-      return None
-
-# Faz o gerenciamento de cadastro
-def gerenciadorDeCadastro(conn, solicitacao):
-  username = solicitacao[1]
-  password = solicitacao[2]
-
-  # Verifica se já existe usuário cadastrado com esse username
-  if username not in credenciais:
-      # Adiciona o usuário e senha na lista de usuários
-      credenciais[username] = password
-      logging.info("Cadastro realizado com sucesso.")
-      conn.send("true".encode("utf-8"))
-      return username
-  else:
-      logging.info("Usuário já cadastrado.")
-      conn.send("false".encode("utf-8"))
-      return None
-
-# Validação de login ou cadastro
-def gerenciadorDeAutenticacao(conn):
-  try:
-    while True:
-      # Recebe a solicitação de autenticação
-      # A solicitação é no formato "FUNCAO-USER-PASSWORD"
-      solicitacao = conn.recv(1024).decode("utf-8").split("-")
-      logging.info(f"Solicitação recebida: {solicitacao}")
-
-      # Verifica se a solicitação é do tipo login
-      if solicitacao[0] == "login":
-          return gerenciadorDeLogin(conn, solicitacao)
-
-      # Verifica se a solicitação é do tipo cadastro
-      elif solicitacao[0] == "cadastro":
-          return gerenciadorDeCadastro(conn, solicitacao)
-
-      else:
-          logging.error("Entrada inválida. Tente novamente.")
-          conn.send("false".encode("utf-8"))
-
-  except BrokenPipeError:
-      logging.warning(f"Conexão perdida (BrokenPipeError).")
-      clients.remove(conn)
-      conn.close()
-
-  except Exception as e:
-      logging.error(f"Erro ao gerenciar a conexão: {e}")
-      clients.remove(conn)
-      conn.close()
-
-# Envio de mensagens privadas
-def mensagemPrivada(remetente, destinatario, mensagem, conn):
-    try:
-        if destinatario in credenciais: # Verifica se o destinatário está conectado
-          destinatario_conn = credenciais[destinatario] # Armazena o destinatário
-          
-          # Re-criptografa a mensagem
-          encrypted_message = encrypt_message(f"{remetente}: {mensagem}")
-          # Envia para o destinatário específico
-          destinatario_conn.send(encrypted_message.encode('utf-8'))
-
-        else:
-          conn.send(f"Erro: O usuário '{destinatario}' não está conectado.".encode('utf-8'))
-    except Exception as e:
-      logging.error(f"Erro ao enviar mensagem privada: {e}")
-      conn.send(f"Erro ao enviar mensagem para {destinatario}.".encode('utf-8'))
-
-# Envio de mensagens multicast
-def multicast(remetente, mensagem, conn):
-    encrypted_message = encrypt_message(f"{remetente}:{mensagem}") # Re-criptografa a mensagem
-    for client in clients:
-      if client != conn:
-        try:
-          client.send(encrypted_message.encode('utf-8')) # Envia a mensagem no formato multicast
-        except:
-          clients.remove(client)
-          client.close()
-
-# Gerenciador de cliente
-def gerenciadorDeCliente(conn, addr):
-  logging.info(f"Nova solicitação de conexão: {addr}")
-  username = gerenciadorDeAutenticacao(conn)
-
-  if not username:
-    conn.send("Usuário ou senha inválido".encode('utf-8'))
-    conn.close()
-    return
-
-  credenciais[username] = conn  # Mapeia o usuário autenticado à conexão
-  clients.append(conn)  # Adiciona o cliente à lista global
-
+def handle_auth(client_socket: socket, addr):
   while True:
     try:
-      encrypted_message = conn.recv(1024).decode('utf-8') # Recebe um conteúdo criptografada
-      if not encrypted_message: # verifica se a mensagem está realmente criptografada
-        break
+        client_socket.send(b"Bem vindo! Digite 'login' ou 'cadastro': ")
 
-      message = decrypt_message(encrypted_message) # Decriptografa o conteúdo para obter dados tipo de envio, remetente, destinatário e conteúdo da mensagem ou arquivo
-      logging.info(f"Mensagem de {addr}: {message}")
+        try:
+          option, username, password = client_socket.recv(1024).decode('utf-8').split("-") # TODO: Decriptografar
 
-      # Divisão segura da mensagem
-      parts = message.split('-', 1)
-      if len(parts) != 2:
-        logging.info("Mensagem malformada. Ignorando...")
-        continue
+        except Exception as e: # Geralmente em caso de desconexao do client
+          logging.error("Erro ao receber opção de autenticação: {e}")
+          clients.remove(client_socket)
+          client_socket.close()
+          return
 
-      tipoDeMensagem, mensagemCompleta = parts
+        if option == 'cadastro':
+            if username in credenciais:
+                client_socket.send(b"USERTAKEN") 
+                logging.info(f"Usuário {username} já possui cadastro")
+                continue
+            else:
+                credenciais[username] = password # Adiciona as credenciais à lista
+                logging.info(f"Novo usuário cadastrado: {username}")
+                client_socket.send(b"SUCCESSCAD")
+                continue
 
-      # Verifica o tipo de mensagem - multicast
-      if tipoDeMensagem == 'multicast':
-        remetente, mensagem = mensagemCompleta.split(':', 1)
-        multicast(remetente, mensagem, conn)
-
-      # Verifica o tipo de mensagem - privado
-      elif tipoDeMensagem == 'privada':
-        remetente, destinatarioEMensagem = mensagemCompleta.split(':', 1)
-        destinatario, mensagem = destinatarioEMensagem.split('-', 1)
-        mensagemPrivada(remetente, destinatario, mensagem, conn)
-
-      # Verifica o tipo de mensagem - arquivo
-      elif tipoDeMensagem == 'arquivo':
-         # para implementar
-         break
-
-      else:
-        logging.info(f"Tipo de mensagem desconhecido: {tipoDeMensagem}")
+        elif option == 'login':
+            if username in credenciais and credenciais[username] == password:
+                logging.info(f"Novo usuário autenticado: {username}")
+                authenticated_clients[username] = client_socket
+                client_socket.send(b"SUCCESSLOG")
+                handle_client(client_socket, username)
+            else:
+                client_socket.send(b"INVALIDCREDENTIALS")
+        
+        else:
+            client_socket.send(b"Invalid option. Disconnecting.\n")
+    
+    except BrokenPipeError:
+      logging.warning(f"Perda de conexão com client: {addr}")
+      clients.remove(client_socket)
+      client_socket.close()
+      return 
 
     except Exception as e:
-      logging.error(f"Erro: {e}")
-      if conn in clients:
-          clients.remove(conn)
-      if username in credenciais:
-          del credenciais[username]
-      conn.close()
+      print(f"Error: {e}")
+
+def handle_client(client_socket: socket, username: str):
+  while True:
+    try:
+        message = client_socket.recv(1024).decode('utf-8').split("-") # TODO: Criptografar 
+
+        if message[0] == "privada":
+          sender, recipient, text = message[1:]
+
+          if recipient in authenticated_clients:
+            recipient_socket = authenticated_clients[recipient]
+            recipient_socket.send(f"{sender}: {text}".encode('utf-8'))
+            client_socket.send(b"SUCCESS")
+            logging.info(f"Mensagem privada enviada de {sender} para {recipient} com sucesso")
+          else:
+            client_socket.send(b"INVALID")
+        
+        if message[0] == "multicast":
+          sender, text = message[1:]
+
+          for user in authenticated_clients:
+            _success = True # Controla se todos os usuários receberam a mensagem
+            if user != sender:
+              try:
+                recipient_socket = authenticated_clients[user]
+                recipient_socket.send(f"{sender}: {text}".encode('utf-8'))
+              except:
+                logging.error(f"Falha ao enviar multicast para user: {user}")
+                _success = False
+
+          if _success:
+            client_socket.send(b"SUCCESS")
+            logging.info(f"Mensagem multicast de {sender} enviada com sucesso")
+          else:
+            client_socket.send(b"FAIL")
+
+        if message[0] == "arquivo":
+          sender, recipient, filename, file_size = message[1:]
+          file_size = int(file_size)
+
+          if recipient in authenticated_clients:
+            client_socket.send(b"READY")
+
+            # Open a file to save the incoming data
+            with open(f"received_{filename}", "wb") as file:
+                logging.info(f"Recebendo arquivo {filename} de {sender} ...")
+                received = 0
+                with tqdm.tqdm(total=file_size, unit='B', unit_scale=True, desc=f"Receiving {filename}") as pbar:
+                  while received < file_size:
+                      file_data = client_socket.recv(1024)
+                      file.write(file_data)
+                      received += len(file_data)
+                      pbar.update(len(file_data))
+
+            # Send acknowledgment after the file is received
+            client_socket.send(b"File received successfully.")
+            logging.info(f"File {filename} received successfully.")
+
+            # recipient_socket = authenticated_clients[recipient]
+            # recipient_socket.send(f"{sender}-{file_name}-{file_size}".encode('utf-8'))
+          else:
+            client_socket.send(f"Destinatário não está autenticado".encode("utf-8"))
+
+    except Exception as e:
+      logging.error(e)
       break
 
-
-# Função principal
-def main():
-    global usuariosCadastrados
-    usuariosCadastrados = {
-        'user1': generate_password_hash('pass1'),
-        'user2': generate_password_hash('pass2'),
-        'user3': generate_password_hash('pass3')
-    }
-
-    # AF_INET = IPV4 e SOCK_STREAM = TCP se fosse SOCK_DGRAM seria UDP
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
+def start_server():
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((HOST, PORT))
-    server.listen(NUMERO_DE_CONEXOES)
-
-    logging.info(f"Server ouvindo em {HOST}:{PORT}.")
-    logging.info(f"Permitindo {NUMERO_DE_CONEXOES} conexões.")
+    server.listen(5)
+    logging.info(f"Server ouvindo em {HOST}:{PORT}")
+    logging.info(f"Permitindo {NUMERO_DE_CONEXOES} conexões")
 
     try:
       while True:
           # Verifica conexões disponíveis
           if len(clients) < NUMERO_DE_CONEXOES:
-              conn, addr = (
-                  server.accept()
-              )  # Aguarda até conexão ser estabelecida
-              clients.append(conn)  # Adiciona o client na lista controlada
+            client_socket, addr = server.accept()
+            logging.info(f"Conexão aceita de {addr}")
+            clients.append(client_socket)
 
-              # Cada thread solicitação ao gerenciadorDeAutenticação é feito em uma thread.
-              threading.Thread(
-                  target=gerenciadorDeAutenticacao, args=(conn,)
-              ).start()
-              logging.info(
-                  f"Nova conexão estabelecida no endereço {addr}. {NUMERO_DE_CONEXOES - len(clients)} conexões restantes."
-              )
+            client_handler = threading.Thread(target=handle_auth, args=(client_socket, addr))
+            client_handler.start()
           else:
-              logging.warning(
-                  "Limite de conexões atingido. Aguardando conexões livres."
-              )
+            logging.warning(
+                "Limite de conexões atingido. Aguardando conexões livres."
+            )
     except KeyboardInterrupt:
         logging.info("Encerrando o servidor.")
     finally:
         server.close()
 
+
 if __name__ == "__main__":
-    main()
+    credenciais = {
+        'user1': '123',
+        'user2': '123',
+        'user3': '123'
+    }
+    start_server()
