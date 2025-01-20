@@ -26,10 +26,12 @@ NUMERO_DE_CONEXOES = 5
 def handle_auth(client_socket: socket, addr):
   while True:
     try:
-        client_socket.send(b"Bem vindo! Digite 'login' ou 'cadastro': ")
+        encrypted_welcome = encrypt_message("Bem vindo! Digite 'login' ou 'cadastro': ")
+        client_socket.send(encrypted_welcome.encode('utf-8'))
 
         try:
-          option, username, password = client_socket.recv(1024).decode('utf-8').split("-") # TODO: Decriptografar
+          decrypted_message = decrypt_message(client_socket.recv(1024).decode('utf-8'))
+          option, username, password = decrypted_message.split("-") 
 
         except Exception as e: # Geralmente em caso de desconexao do client
           logging.error("Erro ao receber opção de autenticação: {e}")
@@ -37,6 +39,7 @@ def handle_auth(client_socket: socket, addr):
           client_socket.close()
           return
 
+        ######################################################################################3
         if option == 'cadastro':
             if username in credenciais:
                 client_socket.send(b"USERTAKEN") 

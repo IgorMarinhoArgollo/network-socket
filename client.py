@@ -21,7 +21,8 @@ PORT = 1234
 def autenticar(client: socket) -> str:
     while True:
       try:
-        welcome_message = client.recv(1024).decode('utf-8')
+        encrypted_welcome_message = client.recv(1024).decode('utf-8')
+        welcome_message = decrypt_message(encrypted_welcome_message)
         option = input(welcome_message).lower()
 
         if option != "login" and option != "cadastro":
@@ -32,7 +33,10 @@ def autenticar(client: socket) -> str:
         password = input("Digite sua senha: ").strip()
 
         message = f"{option}-{user}-{password}"
-        client.send(message.encode('utf-8')) # TODO: Criptografar
+        encrypted_message = encrypt_message(message)
+        client.send(encrypted_message.encode('utf-8'))
+
+        ######################################################
 
         response = client.recv(1024).decode('utf-8') # Possiveis respostas: USERTAKEN e SUCCESS
 
