@@ -65,14 +65,15 @@ def autenticar(client: socket) -> str:
       except KeyboardInterrupt:
         client.close()
         break
-        
+
 ######################################################
 
 def receberMensagens(client: socket):
   while True:
     try:
-        message = client.recv(1024).decode('utf-8') # TODO: Decriptografar
-        print("\n", message, "\n")
+      encrypted_message = client.recv(1024).decode('utf-8')
+      message = decrypt_message(encrypted_message)
+      print("\n", message, "\n")
 
     except Exception as e:
         logging.error(f"Erro ao receber mensagem: {e}")
@@ -82,8 +83,12 @@ def receberMensagens(client: socket):
 def receberArquivos(client: socket):
   while True:
     try:
-        message = client.recv(1024).decode('utf-8') # TODO: Decriptografar
-        print("\n", message, "\n")
+        message = client.recv(1024).decode('utf-8')
+        try:
+          decrypted_message = decrypt_message(message)
+          print("\n", decrypted_message, "\n")
+        except:
+          print("\n", message, "\n")
 
     except Exception as e:
         logging.error(f"Erro ao receber mensagem: {e}")
@@ -99,9 +104,12 @@ def enviarPrivada(client: socket, user: str):
      return
   
   message = f'privada-{user}-{recipient}-{text}'
+  encrypted_message = encrypt_message(message)
+  client.send(encrypted_message.encode('utf-8'))
 
-  client.send(message.encode('utf-8')) # TODO: Criptografar
-  response = client.recv(1024).decode('utf-8') # Possiveis respostas: INVALID e SUCCESS
+  encrypted_response = client.recv(1024).decode('utf-8') # Possiveis respostas: INVALID e SUCCESS
+  response = decrypt_message(encrypted_response)
+
 
   if response == "SUCCESS":
      logging.info("Mensagem enviada com sucesso")
@@ -116,9 +124,11 @@ def enviarMulticast(client: socket, user: str):
      return
   
   message = f'multicast-{user}-{text}'
+  encrypted_message = encrypt_message(message)
+  client.send(encrypted_message.encode('utf-8'))
 
-  client.send(message.encode('utf-8')) # TODO: Criptografar
-  response = client.recv(1024).decode('utf-8') # Possiveis respostas: FAIL e SUCCESS
+  encrypted_response = client.recv(1024).decode('utf-8') # Possiveis respostas: FAIL e SUCCESS
+  response = decrypt_message(encrypted_response) 
 
   if response == "SUCCESS":
      logging.info("Mensagem enviada com sucesso")
@@ -139,14 +149,15 @@ def enviarArquivo(client: socket, user:str):
       file.seek(0)  # Reseta o arquivo para o inicio
 
       # Envia o nome do arquivo e tamanho primeiro
-      message = f'arquivo-{user}-{recipient}-{file_name}-{file_size}'
+      decrypted_message = f'arquivo-{user}-{recipient}-{file_name}-{file_size}'
+      message=encrypt_message(decrypted_message)
 
       client.send(message.encode("utf-8"))
       response = client.recv(1024).decode('utf-8')
 
-      if response != "READY":
+      """ if response != "READY":
           logging.error("Server não está pronto para receber o arquivo")
-          return
+          return """
 
       # Send the file in chunks
       logging.info(f"Enviando arquivo {file_name}...")

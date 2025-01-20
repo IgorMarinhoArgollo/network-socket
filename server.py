@@ -81,18 +81,23 @@ def handle_auth(client_socket: socket, addr):
 def handle_client(client_socket: socket, username: str):
   while True:
     try:
-        message = client_socket.recv(1024).decode('utf-8').split("-") # TODO: Criptografar 
+        encrypted_message = client_socket.recv(1024).decode('utf-8')
+        whole_message = decrypt_message(encrypted_message)
+        message = whole_message.split("-")
 
         if message[0] == "privada":
           sender, recipient, text = message[1:]
 
           if recipient in authenticated_clients:
             recipient_socket = authenticated_clients[recipient]
-            recipient_socket.send(f"{sender}: {text}".encode('utf-8'))
-            client_socket.send(b"SUCCESS")
+            encrypted_message = encrypt_message(f"{sender}: {text}")
+            recipient_socket.send(encrypted_message.encode('utf-8'))
+            encrypted_message = encrypt_message("SUCCESS")
+            client_socket.send(encrypted_message.encode('utf-8'))
             logging.info(f"Mensagem privada enviada de {sender} para {recipient} com sucesso")
           else:
-            client_socket.send(b"INVALID")
+            encrypted_message = encrypt_message("INVALID")
+            client_socket.send(encrypted_message.encode('utf-8'))
         
         if message[0] == "multicast":
           sender, text = message[1:]
@@ -102,16 +107,19 @@ def handle_client(client_socket: socket, username: str):
             if user != sender:
               try:
                 recipient_socket = authenticated_clients[user]
-                recipient_socket.send(f"{sender}: {text}".encode('utf-8'))
+                encrypted_message = encrypt_message(f"{sender}: {text}")
+                recipient_socket.send(encrypted_message.encode('utf-8'))
               except:
                 logging.error(f"Falha ao enviar multicast para user: {user}")
                 _success = False
 
           if _success:
-            client_socket.send(b"SUCCESS")
+            encrypted_message = encrypt_message("SUCCESS")
+            client_socket.send(encrypted_message.encode('utf-8'))
             logging.info(f"Mensagem multicast de {sender} enviada com sucesso")
           else:
-            client_socket.send(b"FAIL")
+            encrypted_message = encrypt_message("FAIL")
+            client_socket.send(encrypted_message.encode('utf-8'))
 
         if message[0] == "arquivo":
           sender, recipient, filename, file_size = message[1:]
