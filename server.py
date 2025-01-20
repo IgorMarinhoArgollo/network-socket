@@ -2,6 +2,24 @@ import socket
 import threading
 from crypto import encrypt_message, decrypt_message
 
+<<<<<<< Updated upstream
+=======
+#tese
+
+# Recebe o user atual
+log_user = getpass.getuser()
+
+# Configurações de logging
+logging.basicConfig(
+    level=logging.INFO,
+    format=f"%(asctime)s [%(levelname)s] [{log_user}]: %(message)s",
+)
+
+credenciais = {} # Salva as credenciais dos usuários cadastrados
+clients = [] # Controla o número de conexões
+authenticated_clients = {} # Controla os clientes autenticados
+
+>>>>>>> Stashed changes
 HOST = '127.0.0.1'
 PORT = 12345
 NUMERO_DE_CONEXOES = 5
