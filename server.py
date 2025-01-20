@@ -39,29 +39,33 @@ def handle_auth(client_socket: socket, addr):
           client_socket.close()
           return
 
-        ######################################################################################3
         if option == 'cadastro':
             if username in credenciais:
-                client_socket.send(b"USERTAKEN") 
+                encrypted_response = encrypt_message("USERTAKEN")
+                client_socket.send(encrypted_response.encode('utf-8'))
                 logging.info(f"Usuário {username} já possui cadastro")
                 continue
             else:
                 credenciais[username] = password # Adiciona as credenciais à lista
                 logging.info(f"Novo usuário cadastrado: {username}")
-                client_socket.send(b"SUCCESSCAD")
+                encrypted_response = encrypt_message("SUCCESSCAD") 
+                client_socket.send(encrypted_response.encode('utf-8'))
                 continue
 
         elif option == 'login':
             if username in credenciais and credenciais[username] == password:
                 logging.info(f"Novo usuário autenticado: {username}")
                 authenticated_clients[username] = client_socket
-                client_socket.send(b"SUCCESSLOG")
+                encrypted_response = encrypt_message("SUCCESSLOG")
+                client_socket.send(encrypted_response.encode('utf-8'))
                 handle_client(client_socket, username)
             else:
-                client_socket.send(b"INVALIDCREDENTIALS")
+                encrypted_response = encrypt_message("INVALIDCREDENTIALS")
+                client_socket.send(encrypted_response.encode('utf-8'))
         
         else:
-            client_socket.send(b"Invalid option. Disconnecting.\n")
+          encrypted_response = encrypt_message("Invalid option. Disconnecting.")
+          client_socket.send(encrypted_response.encode('utf-8'))
     
     except BrokenPipeError:
       logging.warning(f"Perda de conexão com client: {addr}")
@@ -71,6 +75,8 @@ def handle_auth(client_socket: socket, addr):
 
     except Exception as e:
       print(f"Error: {e}")
+
+######################################################################################3
 
 def handle_client(client_socket: socket, username: str):
   while True:

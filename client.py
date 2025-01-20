@@ -36,9 +36,9 @@ def autenticar(client: socket) -> str:
         encrypted_message = encrypt_message(message)
         client.send(encrypted_message.encode('utf-8'))
 
-        ######################################################
 
-        response = client.recv(1024).decode('utf-8') # Possiveis respostas: USERTAKEN e SUCCESS
+        encrypted_response = client.recv(1024).decode('utf-8') # Possiveis respostas: USERTAKEN e SUCCESS
+        response = decrypt_message(encrypted_response)
 
         # --- Respostas para CADASTRO ---
         if response == "USERTAKEN":
@@ -65,6 +65,8 @@ def autenticar(client: socket) -> str:
       except KeyboardInterrupt:
         client.close()
         break
+        
+######################################################
 
 def receberMensagens(client: socket):
   while True:
